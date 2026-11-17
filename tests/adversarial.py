@@ -29,12 +29,35 @@ def ff(*args):
                           capture_output=True, text=True)
 
 
+def make_fixture(tmp):
+    """Synthesise a fixture when the developer's own clip is absent.
+
+    Deterministic, 12s, 720x1280, has audio, has real scene changes so the
+    scene-cut and sheet checks have something to find.
+    """
+    fx = tmp / "fixture.mp4"
+    ff("-f", "lavfi", "-i", "testsrc2=s=720x1280:d=4:r=30",
+       "-f", "lavfi", "-i", "smptebars=s=720x1280:d=4:r=30",
+       "-f", "lavfi", "-i", "testsrc=s=720x1280:d=4:r=30",
+       "-f", "lavfi", "-i", "sine=frequency=440:duration=12",
+       "-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1[v]",
+       "-map", "[v]", "-map", "3:a", "-c:v", "libx264", "-preset", "ultrafast",
+       "-c:a", "aac", "-shortest", str(fx))
+    if not fx.exists() or fx.stat().st_size == 0:
+        print("FATAL: could not build fixture and no source clip present",
+              file=sys.stderr)
+        sys.exit(2)
+    print(f"SKIP: fixture missing, using synthesised {fx.name}")
+    return fx
+
+
 def main():
     tmp = Path(tempfile.mkdtemp(prefix="vdtest_"))
     src = Path.home() / "folders" / "kitchen_clips" / "k01.mp4"
     if not src.exists():
-        print("no source clip; abort")
-        return
+        # NEVER exit 0 here. A harness that silently tests nothing reports
+        # green on every machine but this one -- worse than no tests at all.
+        src = make_fixture(tmp)
 
     # ---------- 1. nonexistent file
     r = run(["probe", str(tmp / "nope.mp4"), "--json"])
@@ -67,13 +90,17 @@ def main():
     one = tmp / "one.mp4"
     ff("-i", str(src), "-frames:v", "1", "-an", str(one))
     r = run(["probe", str(one), "--json"])
-    ok = r.returncode == 0
-    if ok:
+    # NOTE: rec() must be OUTSIDE this if. It used to sit inside `if ok:`, so a
+    # failing exit skipped the record entirely and the total silently dropped
+    # below the expected count instead of reporting a failure.
+    ok = False
+    detail = f"rc={r.returncode}"
+    if r.returncode == 0:
         d = json.loads(r.stdout)
         dur = d["clips"]["duration_s"]
-        # a single frame should not be reported as a long clip
         ok = dur < 1.5
-        rec("1-frame clip", ok, f"duration={dur}")
+        detail = f"duration={dur}"
+    rec("1-frame clip", ok, detail)
 
     # ---------- 5. audio-only file (no video stream)
     aud = tmp / "aud.m4a"
@@ -93,18 +120,114 @@ def main():
         ok = (tmp / "s_one.jpg").exists() or "error" in r.stdout
         rec("sheet on 1-frame clip", ok, r.stdout[:100])
 
-    # ---------- 7. sheet --times with MORE times than grid cells
-    r = run(["sheet", str(src), "--rung", "1", "--times"] +
-            [str(i) for i in range(30)] + ["--out", str(tmp / "s_many.jpg")])
-    ok = r.returncode == 0
-    rec("sheet with 30 times on 4x4 grid", ok, r.stdout[:150])
+    # ---------- 7. MORE --times than grid cells must not silently truncate
+    # This used to assert only rc==0, which is exactly what a silent truncation
+    # looks like. Now: the sidecar must say how many were kept vs supplied, and
+    # the sheet must contain only cells for times it actually used.
+    many = [str(i) for i in range(30)]
+    r = run(["sheet", str(src), "--rung", "1", "--times", *many,
+             "--out", str(tmp / "s_many.jpg")])
+    ok = False
+    detail = f"rc={r.returncode}"
+    if r.returncode == 0:
+        d = json.loads(r.stdout)
+        used, supplied = len(d["times"]), len(many)
+        # 4x4 => at most 16 cells; must not claim 30
+        ok = used <= 16 and used == d["cells_filled"] and d["cells_expected"] == 16
+        detail = (f"supplied={supplied} used={used} "
+                  f"filled={d['cells_filled']}/{d['cells_expected']}")
+    rec("30 --times on 4x4 does not overclaim", ok, detail)
 
-    # ---------- 8. sheet --times out of range (beyond duration)
+    # ---------- 8. out-of-range times: must be CLAMPED and DISCLOSED,
+    # and the sidecar times must match what is actually in the image.
     r = run(["sheet", str(src), "--rung", "2", "--times", "999", "1000",
              "--out", str(tmp / "s_oor.jpg")])
-    ok = r.returncode == 0
-    produced = (tmp / "s_oor.jpg").exists()
-    rec("sheet with out-of-range times", ok, f"rc={r.returncode} produced={produced}")
+    ok = False
+    detail = f"rc={r.returncode}"
+    if r.returncode == 0:
+        d = json.loads(r.stdout)
+        clamped = d.get("clamped") or []
+        dur = d["duration_s"]
+        # either the times were clamped into range, or they failed and are
+        # listed as failures -- what is NOT allowed is quietly labelling a
+        # valid frame as 999s
+        labels_in_range = all(t <= dur for t in d["times"])
+        disclosed = bool(clamped) or bool(d.get("failed_seeks"))
+        ok = labels_in_range and disclosed
+        detail = (f"times={d['times']} range<= {dur} "
+                  f"clamped={len(clamped)} failed={len(d.get('failed_seeks') or [])}")
+    rec("out-of-range times clamped + disclosed", ok, detail)
+
+    # ---------- 8b. sidecar may NOT claim a time that produced no frame
+    r = run(["sheet", str(src), "--rung", "2",
+             "--times", "1", "9999", "2", "--out", str(tmp / "s_gap.jpg")])
+    ok = False
+    detail = f"rc={r.returncode}"
+    if r.returncode == 0:
+        d = json.loads(r.stdout)
+        # 9999 must never appear in 'times' -- only in requested/failed/clamped
+        ok = 9999 not in d["times"] and d["cells_filled"] == len(d["times"])
+        detail = (f"times={d['times']} filled={d['cells_filled']}")
+    rec("sidecar lists only extracted frames", ok, detail)
+
+    # ---------- 8c. rung 1 must cover the WHOLE clip, not the first 16s
+    longc = tmp / "long.mp4"
+    ff("-f", "lavfi", "-i", "testsrc=s=720x1280:d=130:r=30", str(longc))
+    if longc.exists():
+        r = run(["sheet", str(longc), "--rung", "1", "--out", str(tmp / "s_long.jpg")])
+        ok = False
+        detail = f"rc={r.returncode}"
+        if r.returncode == 0:
+            d = json.loads(r.stdout)
+            mx, dur = max(d["times"]), d["duration_s"]
+            ok = mx >= dur * 0.9
+            detail = f"max_time={mx} of {dur}"
+        rec("rung 1 covers the whole clip", ok, detail)
+
+    # ---------- 8d. rung 3 on landscape must not downscale to 1080x608
+    land = tmp / "land.mp4"
+    ff("-i", str(src), "-vf", "scale=1920:1080", "-t", "4", str(land))
+    if land.exists():
+        r = run(["sheet", str(land), "--rung", "3", "--times", "0.5", "1.5",
+                 "--out", str(tmp / "s_land.jpg")])
+        ok = False
+        detail = f"rc={r.returncode}"
+        if r.returncode == 0:
+            d = json.loads(r.stdout)
+            p = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                                "stream=width,height", "-of", "csv=p=0",
+                                str(tmp / "s_land.jpg")],
+                               capture_output=True, text=True)
+            w, h = (int(x) for x in p.stdout.strip().split(",")[:2])
+            cell_h = h // 2  # 2x2 grid
+            ok = cell_h >= 1000
+            detail = f"sheet={w}x{h} cell_h={cell_h} (needs >=1000)"
+        rec("rung 3 landscape keeps full height", ok, detail)
+
+    # ---------- 8e. reported cell_px must match the actual image.
+    # A wrong scale at either stage let the sheet and its metadata disagree;
+    # this asserts the pixel dimensions the tool PROMISES.
+    r = run(["sheet", str(src), "--rung", "3", "--times", "0.5", "1.5",
+             "--out", str(tmp / "s_dims.jpg")])
+    ok = False
+    detail = f"rc={r.returncode}"
+    if r.returncode == 0:
+        d = json.loads(r.stdout)
+        p = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                            "stream=width,height", "-of", "csv=p=0",
+                            str(tmp / "s_dims.jpg")],
+                           capture_output=True, text=True)
+        w, h = (int(x) for x in p.stdout.strip().split(",")[:2])
+        cols, rows = (int(x) for x in d["grid"].lower().split("x"))
+        cell_w, cell_h = w // cols, h // rows
+        # `cell_px` pins ONE axis via scale=-2:{cell}:
+        #   portrait footage  -> height == cell_px (608x1080)
+        #   landscape footage -> height == cell_px (1926x1086)
+        # So the HEIGHT is always cell_px; the width floats to keep aspect.
+        ok = abs(cell_h - d["cell_px"]) <= 12
+        detail = (f"sheet={w}x{h} cell={cell_w}x{cell_h} "
+                  f"height={cell_h} declared={d['cell_px']}")
+    rec("sheet dims match declared cell_px", ok, detail)
 
     # ---------- 9. brief on a clip shorter than target band
     r = run(["brief", str(one)])
@@ -242,6 +365,17 @@ def main():
     line = next((l for l in r.stdout.splitlines() if l.startswith("**Target")), "")
     ok = "too short" in line and "drop 0" not in line
     rec("brief is honest about short source", ok, line[:140])
+
+    # ---------- 23. rotated human output must not contradict itself.
+    # It used to print stored dims with display orientation: "720x1280 (landscape)".
+    r = run(["probe", str(rot)])
+    ok = False
+    detail = "rc"
+    if r.returncode == 0:
+        line2 = next((l for l in r.stdout.splitlines() if "fps" in l), "")
+        ok = "1280x720" in line2 and "(landscape)" in line2
+        detail = line2.strip()[:120]
+    rec("rotated human output is self-consistent", ok, detail)
 
     print("\n" + "=" * 60)
     failed = [r_ for r_ in results if not r_[1]]

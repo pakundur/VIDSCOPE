@@ -168,8 +168,11 @@ vidscope sheet VIDEO --rung {1,2,3} [--times T1 T2 ...] [--grid 4x4] [--out PATH
 | **2** | 760px | Framing, product ID, obvious text | What is being shown, where text sits |
 | **3** | 1080px | **Confirming a suspect label** | Exact letters — yes or no |
 
-Each sheet writes a `.json` sidecar recording the exact timestamp of every cell,
-so a vision prompt can name frames precisely instead of guessing.
+Each sheet writes a `.json` sidecar. It records `times` — the frames **actually
+in the image**, in cell order — plus `requested_times`, `cells_filled`,
+`cells_expected`, `seek_mode`, and any `clamped` or `failed_seeks`. Label cells
+from `times`, never from what you asked for: a failed seek would otherwise
+shift every later label against its cell.
 
 > **Rung 1 is a triage resolution, never a verification resolution.** At 330px
 > you cannot read a label, a watermark, or a brand name. You can only see that
@@ -350,10 +353,14 @@ directly instead of going through the dispatcher.
 python3 tests/adversarial.py
 ```
 
-22 checks that try to break the tool: missing, empty and non-video files,
+27 checks that try to break the tool: missing, empty and non-video files,
 audio-only input, single-frame clips, out-of-range and over-supplied
 timestamps, unicode paths, rotated streams, low frame rates, concurrent runs,
-and freezes that run to end-of-file.
+freezes that run to end-of-file, whole-clip rung-1 coverage, landscape rung-3
+resolution, and sidecar/label agreement.
+
+It needs no fixtures — if the author's sample clip is absent it synthesises one
+with ffmpeg and runs everything anyway.
 
 Every check asserts a **behaviour**, not just an exit code — the first version
 of this suite passed 22/22 against code with three known bugs in it, because

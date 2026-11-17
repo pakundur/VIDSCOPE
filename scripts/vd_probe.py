@@ -407,9 +407,17 @@ def main():
         print(json.dumps(result, indent=2))
     else:
         c, v = result["clips"], result["clips"]["video"] or {}
+        dw = c.get("display_width") or v.get("width")
+        dh = c.get("display_height") or v.get("height")
+        rot = v.get("rotation")
+        # print DISPLAY dimensions with the display orientation -- printing
+        # stored 720x1280 next to "(landscape)" reads as a contradiction
+        dims = f"{dw}x{dh}"
+        if rot:
+            dims += f" (stored {v.get('width')}x{v.get('height')}, rotated {rot}°)"
         print(f"{c['file']}")
         print(f"  {c['duration_s']:.2f}s @ {v.get('fps')}fps  "
-              f"{v.get('width')}x{v.get('height')} ({c.get('orientation')})  "
+              f"{dims} ({c.get('orientation')})  "
               f"{c['size_mb']} MB  {v.get('codec')}")
         print(f"  audio streams: {c['audio_streams']}   "
               f"scene cuts: {result['scene']['cuts_detected']}")

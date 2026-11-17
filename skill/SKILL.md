@@ -204,10 +204,31 @@ sampled frames" ≠ "no text anywhere" — say which one you did.
 ### Sheets
 - **Include both ends.** A mid-clip-only sheet misses frame 0 (the hook) and the
   last frame (the payoff). Sample `t=0` and `t=duration-0.15`.
+- **Spread samples across the WHOLE clip, not the first N seconds.**
+  `range(int(dur/step))[:n]` is the trap: it builds 0..dur then keeps the first
+  n entries, so a 130s clip is represented by its first 16s and 88% of the video
+  is never seen. Use an even spread, e.g. `i*(dur-0.15)/(n-1)`.
+- **Pin the SHORTEST side when downscaling.** `scale={cell}:-2` pins width, so
+  1920x1080 becomes 1080x608 — at the very rung whose job is reading a label.
+  Use `scale=-2:{cell}` so height is pinned and landscape keeps its detail.
+- **Check every scale stage.** A tile/overlay pass that re-scales silently masks
+  a wrong scale in the extract stage: the final sheet looks fine while the
+  frames were already destroyed. Both stages must use the same form.
+- **Label cells from what was EXTRACTED, not what you requested.** A failed or
+  clamped seek shifts every later cell against its label, and a vision model
+  then reads frame 4 as "999s". Record actual times plus the requested list,
+  cell counts and failures.
+- **Seek mode matters at full res.** `-ss` before `-i` can return a frame up to
+  a GOP early on some containers; for label-reading, seek AFTER `-i`.
 - **Don't duplicate filler cells.** Padding a grid with a repeated last frame
   reads as a frozen section.
 - **Don't tile more than ~16 cells at 760px+.** Output gets large and vision
   downscales it again, defeating the purpose.
+
+### Reporting
+- **Print display dimensions with display orientation.** Printing stored
+  `720x1280` next to `(landscape)` is a self-contradiction the reader has to
+  decode; print `1280x720 (stored 720x1280, rotated 90°) (landscape)`.
 
 ### Environment
 - **`/tmp` may be read-only** on some systems — pass `--out` to a writable dir.
