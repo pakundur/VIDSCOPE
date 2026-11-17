@@ -339,7 +339,7 @@ vidscope/
 ├── examples/
 │   └── agent_example.py  # a complete agent loop, runnable
 ├── tests/
-│   └── adversarial.py    # 22 checks that try to break it
+│   └── adversarial.py    # 28 checks that try to break it
 └── docs/
     └── worked-example.md # one clip, three rungs, one real finding
 ```
@@ -353,11 +353,12 @@ directly instead of going through the dispatcher.
 python3 tests/adversarial.py
 ```
 
-27 checks that try to break the tool: missing, empty and non-video files,
+28 checks that try to break the tool: missing, empty and non-video files,
 audio-only input, single-frame clips, out-of-range and over-supplied
 timestamps, unicode paths, rotated streams, low frame rates, concurrent runs,
 freezes that run to end-of-file, whole-clip rung-1 coverage, landscape rung-3
-resolution, and sidecar/label agreement.
+resolution, rotated streams rendering a correctly-oriented sheet, and
+sidecar/label agreement.
 
 It needs no fixtures — if the author's sample clip is absent it synthesises one
 with ffmpeg and runs everything anyway.

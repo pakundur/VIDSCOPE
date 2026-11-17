@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.3 — 2026-11-17
+
+Closes the last two gaps from the 1.0.2 review: the sidecar could not describe
+the render it produced, and nothing asserted that `sheet` honours rotation.
+
+### Added — `sheet`
+
+- **`sheet_width` / `sheet_height` in the sidecar.** An agent can now confirm
+  the render kept cells at `cell_px` and used display orientation without
+  re-probing the JPEG. (Applies to the sheet `_build_tiles` writes; the
+  single-frame early-out copies the still, so dims follow the source frame.)
+
+### Fixed — test harness
+
+- **The sheet's rotation handling was untested.** `vd_sheet.py` contains no
+  rotation code at all — it relies entirely on ffmpeg's auto-rotate — so
+  adding `-noautorotate` anywhere in the extract path silently produces
+  sideways cells. New check **12b** renders a 90°-tagged portrait clip at
+  rung 3 and asserts the sheet comes out **landscape** (wider than tall) and
+  that the sidecar dimensions match the file on disk.
+  Verified to bite: injecting `-noautorotate` yields
+  `FAIL rotated clip renders landscape sheet <- sheet=1228x2172`.
+  Suite is now **28 checks**.
+
 ## 1.0.2 — 2026-11-17
 
 Sheet-layer fixes (unchanged since 1.0.0) plus a false-green path in the test

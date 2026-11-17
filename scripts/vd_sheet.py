@@ -128,6 +128,19 @@ def build(path, rung, times=None, grid=None, out=None):
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def _sheet_dims(img):
+    """Return (width, height) of a rendered sheet; (None, None) if unreadable."""
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height", "-of", "csv=p=0", str(img)],
+        capture_output=True, text=True)
+    try:
+        w, h = r.stdout.strip().split(",")[:2]
+        return int(w), int(h)
+    except (ValueError, AttributeError):
+        return None, None
+
+
 def _build_tiles(path, tmpdir, times, cell, cols, rows, out, dur, rung, grid,
                  exact, requested, adjusted):
     stills = []
@@ -172,6 +185,8 @@ def _build_tiles(path, tmpdir, times, cell, cols, rows, out, dur, rung, grid,
         print(json.dumps({"error": "tile failed"}))
         return None
 
+    sheet_w, sheet_h = _sheet_dims(out)
+
     meta = {
         "sheet": str(out),
         "rung": rung,
@@ -186,6 +201,11 @@ def _build_tiles(path, tmpdir, times, cell, cols, rows, out, dur, rung, grid,
         "cells_filled": len(stills),
         "cells_expected": cols * rows,
         "seek_mode": "decode-accurate" if exact else "keyframe",
+        # Sheet pixel dimensions, so an agent can confirm the render kept the
+        # cells at cell_px and honoured display orientation (rotation) without
+        # re-probing the JPEG. cell_px pins HEIGHT; width follows the aspect.
+        "sheet_width": sheet_w,
+        "sheet_height": sheet_h,
         "bytes": out.stat().st_size,
     }
     if adjusted:

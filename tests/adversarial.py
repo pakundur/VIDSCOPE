@@ -29,6 +29,18 @@ def ff(*args):
                           capture_output=True, text=True)
 
 
+def _dims(img):
+    """(width, height) of an image/video, or (None, None)."""
+    p = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                        "-show_entries", "stream=width,height", "-of", "csv=p=0",
+                        str(img)], capture_output=True, text=True)
+    try:
+        w, h = p.stdout.strip().split(",")[:2]
+        return int(w), int(h)
+    except (ValueError, AttributeError):
+        return None, None
+
+
 def make_fixture(tmp):
     """Synthesise a fixture when the developer's own clip is absent.
 
@@ -213,21 +225,22 @@ def main():
     detail = f"rc={r.returncode}"
     if r.returncode == 0:
         d = json.loads(r.stdout)
-        p = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
-                            "stream=width,height", "-of", "csv=p=0",
-                            str(tmp / "s_dims.jpg")],
-                           capture_output=True, text=True)
-        w, h = (int(x) for x in p.stdout.strip().split(",")[:2])
+        w, h = _dims(tmp / "s_dims.jpg")
         cols, rows = (int(x) for x in d["grid"].lower().split("x"))
-        cell_w, cell_h = w // cols, h // rows
-        # `cell_px` pins ONE axis via scale=-2:{cell}:
-        #   portrait footage  -> height == cell_px (608x1080)
-        #   landscape footage -> height == cell_px (1926x1086)
-        # So the HEIGHT is always cell_px; the width floats to keep aspect.
-        ok = abs(cell_h - d["cell_px"]) <= 12
-        detail = (f"sheet={w}x{h} cell={cell_w}x{cell_h} "
-                  f"height={cell_h} declared={d['cell_px']}")
-    rec("sheet dims match declared cell_px", ok, detail)
+        if w is None or h is None:
+            rec("sheet dims match declared cell_px", False, "sheet unreadable")
+        else:
+            cell_w, cell_h = w // cols, h // rows
+            # `cell_px` pins ONE axis via scale=-2:{cell}:
+            #   portrait footage  -> height == cell_px (608x1080)
+            #   landscape footage -> height == cell_px (1926x1086)
+            # So the HEIGHT is always cell_px; the width floats to keep aspect.
+            ok = abs(cell_h - d["cell_px"]) <= 12
+            detail = (f"sheet={w}x{h} cell={cell_w}x{cell_h} "
+                      f"height={cell_h} declared={d['cell_px']}")
+            rec("sheet dims match declared cell_px", ok, detail)
+    else:
+        rec("sheet dims match declared cell_px", False, detail)
 
     # ---------- 9. brief on a clip shorter than target band
     r = run(["brief", str(one)])
@@ -269,6 +282,28 @@ def main():
                   f"stored={v.get('width')}x{v.get('height')} "
                   f"aspect_flag={aspect_flagged}")
     rec("rotation read + orientation flipped", ok, detail or f"rc={r.returncode}")
+
+    # ---------- 12b. the SHEET must also honour display orientation.
+    # probe reading rotation is only half the job: if the scaler/tile stage
+    # used stored dims, a 90deg-tagged portrait clip would render a portrait
+    # sheet and every cell would be sideways. Asserted by comparing the sheet
+    # geometry against the SAME clip rendered with no rotation tag.
+    if rot.exists():
+        rot_sheet = tmp / "rot_sheet.jpg"
+        r = run(["sheet", str(rot), "--rung", "3", "--out", str(rot_sheet)])
+        ok, detail = False, f"rc={r.returncode}"
+        if r.returncode == 0 and rot_sheet.exists():
+            d = json.loads(r.stdout)
+            sw, sh = _dims(rot_sheet)
+            # the rotated clip displays LANDSCAPE, so its sheet must be wider
+            # than tall; a stored-dims render would be taller than wide.
+            wider_than_tall = sw is not None and sh is not None and sw > sh
+            # sidecar must describe the image it actually wrote
+            matches = (d.get("sheet_width") == sw and d.get("sheet_height") == sh)
+            ok = wider_than_tall and matches
+            detail = (f"sheet={sw}x{sh} (rotated clip must render landscape) "
+                      f"sidecar={d.get('sheet_width')}x{d.get('sheet_height')}")
+        rec("rotated clip renders landscape sheet", ok, detail)
 
     # ---------- 13. variable frame rate / unusual fps
     vfr = tmp / "vfr.mp4"

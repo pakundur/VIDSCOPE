@@ -222,6 +222,11 @@ sampled frames" ≠ "no text anywhere" — say which one you did.
   a GOP early on some containers; for label-reading, seek AFTER `-i`.
 - **Don't duplicate filler cells.** Padding a grid with a repeated last frame
   reads as a frozen section.
+- **Rotation is fixed by ffmpeg's auto-rotate, not by code.** `vd_sheet.py` has
+  no rotation logic — the extract step relies on ffmpeg honouring the display
+  matrix. Anything that adds `-noautorotate` renders sideways cells with no
+  error, and only a geometry assertion catches it: a portrait clip tagged 90°
+  must produce a sheet **wider than tall**.
 - **Don't tile more than ~16 cells at 760px+.** Output gets large and vision
   downscales it again, defeating the purpose.
 
