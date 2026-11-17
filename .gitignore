@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# VidScope generated artifacts
+*_rung1.jpg
+*_rung2.jpg
+*_rung3.jpg
+*_rung*.json
+*_inspect.jpg
+probe.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

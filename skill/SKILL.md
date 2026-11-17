@@ -1,0 +1,212 @@
+---
+name: vidscope
+description: Use when you need to understand or verify a video file's content without watching it — detect scene cuts, black/frozen frames, exposure faults, and read what is actually on screen (products, actions, on-screen text, logos, faces). Load for "what's in this video", "check this clip before I post", "detect scenes", "does this video have text/faces", "is this clip usable", or any pre-publish / pre-edit audit.
+license: MIT
+---
+
+# VidScope — Video Frame Detection & Content Understanding
+
+Turn an opaque video file into facts you can act on: what happens, when,
+whether it is technically sound, and whether it is safe to ship.
+
+## When to use
+
+- **"What's in this video?"** — describe content, beats, product, setting.
+- **Pre-publish audit** — verify no faces, logos, watermarks, on-screen text.
+- **Pre-edit triage** — find usable segments and cut points before cutting.
+- **Quality check** — catch black frames, freezes, bad exposure, wrong aspect.
+- **Batch triage** — screen 50 clips for which are worth watching.
+
+Do NOT use this for editing itself. This is measurement, not cutting.
+
+## Setup
+
+Requires `ffmpeg` + `ffprobe` on `PATH` and Python 3.8+. Pure standard
+library — no OpenCV, no numpy, no pip installs.
+
+```bash
+vidscope --help
+```
+
+If the `vidscope` command is not available, call the scripts directly from the
+repository root: `python3 scripts/vidscope COMMAND ...`.
+
+## The two layers — do both, in this order
+
+| Layer | Answers | Tool | Cost |
+|---|---|---|---|
+| **Signal** | when do things change? is it broken? | `vidscope probe` | seconds, no LLM |
+| **Semantic** | what IS it? any text? any faces? | `vidscope sheet` + vision | one image read |
+
+**Always run the signal layer first.** It is free; it tells you which frames
+are worth spending a vision call on. Jumping straight to vision on a 60s video
+wastes calls on frames where nothing changes.
+
+## Step 1 — Signal pass
+
+```bash
+vidscope probe clip.mp4          # human-readable
+vidscope probe clip.mp4 --json   # for agents / piping
+```
+
+Emits duration, fps, resolution, orientation, audio-stream count, scene cuts
+with exact timestamps, black intervals, freeze intervals, luma stats, and a
+`FLAGS` block written as actions.
+
+**Read the flags, not just the numbers:**
+
+- `SILENT` → no audio stream; needs music added downstream
+- `BLACK — 2.1s at 0.0s` → trim it; a black open reads as a stall
+- `FROZEN — 2.6s at 64.1s` → viewers read it as buffering; cut the dead air
+- `DARK — 12/25 frames under luma 40` → too dim for phone screens
+- `ASPECT — 1920x1080` → needs a 9:16 crop for vertical platforms
+- `LOW-RES` / `SUB-HD` → **aspect and resolution are independent.** 576×1024 is
+  a valid 9:16 yet still looks soft upscaled to 1080×1920. A clip can pass the
+  aspect test and fail resolution.
+- `SHORT — 3.0s` → below the length that earns a watch
+
+**Cut density:**
+
+| cuts/min | meaning |
+|---|---|
+| < 6 | single continuous take — treat as ONE shot |
+| 6–20 | normal demo/dialogue pacing |
+| 20–60 | fast montage, ~1–3s per shot |
+| > 60 | hyper-cut, or the detector is firing on motion not cuts |
+
+High scores are not always real cuts — a whip pan or a hand crossing frame
+scores like one. Confirm boundaries by looking.
+
+## Step 2 — Contact sheet + vision
+
+| Rung | Cell | Use for | Answers |
+|---|---|---|---|
+| 1 | 330px | "what is this video?" | story, faces, arc, payoff |
+| 2 | 760px | framing, obvious text, product | product ID, action, text leads |
+| 3 | 1080px | **confirm a suspect label** | exact letters yes/no |
+
+```bash
+vidscope sheet clip.mp4 --rung 1
+vidscope sheet clip.mp4 --rung 3 --times 5.0 5.5 6.0
+```
+
+Writes `clip_rungN.jpg` plus a `.json` sidecar recording the exact timestamp of
+every cell. Then read the sheet with a vision model:
+
+```
+vision(sheet.jpg, question="<prompt from vidscope brief>")
+```
+
+`vidscope brief` generates that prompt already containing the real timestamps —
+prefer it over writing your own.
+
+### The 330px trap — where bad clips get shipped
+
+**330px is triage, never verification.** At 330px you cannot read a label, a
+watermark, or a brand. You can only see that something *might* be there —
+which is exactly the point, and never enough to decide.
+
+Escalate every text finding to rung 3 at the exact timestamp before it changes
+what you do:
+
+```
+rung 1 (330)  →  "there's text on the container"
+rung 2 (760)  →  0/15/35/55/75/92% — text persists? where?
+rung 3 (1080) →  zoom the suspect region, read the actual letters
+```
+
+### Vision invents text — every hit is a LEAD, never a finding
+
+Observed on real footage: a model reported "TEA", "GRAND", "HOME", "ON",
+"FASHION", and an entire "Adidas three-stripe logo" — **all disproven at full
+resolution.** Stitching, bezels, fabric patterns, and colour-blocking read as
+lettering to a downscaled eye.
+
+But the opposite happens too: the same model reported **老干妈 (Lao Gan Ma)** on
+a jar, and full resolution **confirmed it**, plus `280g` and printed dates.
+
+**The sheet was wrong once and right once.** That is why it can never be the
+deciding vote in either direction.
+
+**Rule:** never reject or accept a clip on a sheet-based text claim. Zoom first.
+
+```bash
+# consecutive full-res frames around the suspect second
+vidscope sheet clip.mp4 --rung 3 --times 5.0 5.4 5.8 6.2
+```
+
+Ask a **forced-choice** question ("is it (a) brand X, (b) another brand,
+(c) generic") and always offer "no text" as an option. Open questions invite
+invention.
+
+### What tiles do NOT show you
+
+- **Audio** — a stream count, not speech or music.
+- **Motion quality** — blur, judder, stabilisation.
+- **Whether the payoff lands** — a clean frame may arrive 0.5s before the end,
+  too late to register.
+- **Off-frame text** — a UI element out of frame in the still may pan in later.
+  Sample densely if the camera moves.
+
+## Step 3 — Segment plan
+
+```bash
+vidscope brief clip.mp4 --target 21 34
+```
+
+Produces a beat table (start/end/len per segment) and greedily selects beats to
+land inside the target band. 21–34s is the short-form social sweet spot;
+15–21s for ads.
+
+**A segment plan is a proposal.** Boundaries come from the scene detector, so
+they land where pixels changed, not where the story beat is. Sanity-check
+against the sheet: if beat 2 is "product introduced", does the frame at its
+midpoint actually show the product?
+
+## Verification gate — before claiming a video is clean
+
+1. `probe` → no BLACK over 0.5s, no FREEZE over 1.5s, no DARK flag
+2. Rung 1 sheet read → story identified, product named
+3. Rung 3 zoom on **every** frame where text or branding was reported
+4. Faces confirmed absent (actively checked, not merely "not seen")
+5. Aspect ratio and resolution match the destination
+6. Audio: silent is fine only if music will be added
+
+Claim what you verified and only what you verified. "No text found in 16
+sampled frames" ≠ "no text anywhere" — say which one you did.
+
+## Pitfalls
+
+### ffmpeg / scdet
+- **`scdet` + `metadata=mode=print` = zero scores.** scdet logs its own metadata
+  to stderr; chaining `metadata=mode=print` after it silences those lines and
+  yields a false "0 cuts detected". Do not chain it.
+- **scdet `t=` is a threshold on the 0–100 scale**, not a duration. `t=1` logs
+  every frame.
+- **`lavfi.scd.time` gives the exact timestamp** — use it instead of
+  interpolating `frame_index × duration / frames`, which drifts.
+- **Rotation is metadata, not pixels.** A portrait phone clip can be stored
+  1920×1080 with a 90° rotation matrix. Check `tags.rotate` or the 9:16 check
+  wrongly fails.
+- **signalstats emits YMIN→YMAX per frame across separate lines.** Group per
+  frame by opening a record on YMIN and closing on YMAX. Closing on an arbitrary
+  key mixes values across frames and reports absurd clipping counts (e.g.
+  "25/25 crushed black" on a well-exposed clip).
+
+### Sheets
+- **Include both ends.** A mid-clip-only sheet misses frame 0 (the hook) and the
+  last frame (the payoff). Sample `t=0` and `t=duration-0.15`.
+- **Don't duplicate filler cells.** Padding a grid with a repeated last frame
+  reads as a frozen section.
+- **Don't tile more than ~16 cells at 760px+.** Output gets large and vision
+  downscales it again, defeating the purpose.
+
+### Environment
+- **`/tmp` may be read-only** on some systems — pass `--out` to a writable dir.
+- **No headless browser needed.** This ffmpeg + vision route is the only visual
+  verification required.
+
+## Related
+
+- Montage/editing mechanics belong in an editing skill, not here. VidScope
+  produces the facts; something else produces the cut.
