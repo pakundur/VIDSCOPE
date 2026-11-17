@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.0.1 — 2026-11-17
+
+Bug hunt pass. Four real defects found by adversarial testing, each of which
+produced **silently wrong output** rather than an error.
+
+### Fixed
+
+- **Rotation was never read (silent wrong orientation).** `probe` looked for
+  `tags.rotate`, but ffmpeg 8 puts the display matrix in
+  `side_data_list[].rotation`. A 720x1280 clip tagged 90° *displays* as
+  1280x720 landscape; vidscope reported `rotation: None`, `orientation:
+  portrait`, `is_9_16: True`, and emitted no ASPECT flag. Orientation,
+  aspect and resolution now all compute from display dimensions, and the
+  ASPECT flag shows the stored size and rotation for transparency.
+- **Freezes running to EOF were dropped entirely.** `freezedetect` only emits
+  `freeze_end` when the freeze actually ends. A 3-second still frame logged
+  `freeze_start` alone; the parallel-array parser dropped it and reported
+  `flags: []`. A clip that stops moving before it stops playing now raises
+  `FROZEN — from Xs to end of clip`.
+- **Crushed-black threshold was off by one code value.** Pure black sits at
+  luma 16 exactly; `y_min <= 16` only caught pixels strictly darker than that,
+  so genuinely crushed frames went uncounted. Now uses `<= 17` combined with a
+  near-black mean.
+- **`brief` claimed "drop 0" when the source was simply too short.** It now
+  states how many seconds short the source is and what to do about it, and
+  pluralises "beat/beats" correctly.
+
+### Testing
+
+- Added `tests/adversarial.py` — 22 checks covering missing/empty/non-video
+  files, audio-only input, 1-frame clips, out-of-range and over-supplied
+  timestamps, unicode paths, rotation, low fps, concurrent runs, freeze-to-EOF,
+  and JSON purity.
+- The suite was **verified to fail against the reintroduced bugs**. Its first
+  version hardcoded the repo path, so it silently tested a different directory
+  and reported 22/22 on broken code — that flaw is fixed and documented.
+
 ## 1.0.0 — 2026-11-17
 
 First public release.

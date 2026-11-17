@@ -33,7 +33,8 @@ def segment_plan(probe, target_lo=None, target_hi=None):
             segs.append({"start": round(a, 2), "end": round(b, 2),
                          "len": round(b - a, 2)})
 
-    plan = {"n_segments": len(segs), "segments": segs}
+    plan = {"n_segments": len(segs), "segments": segs,
+            "total_s": round(sum(s["len"] for s in segs), 2)}
 
     if target_lo and target_hi:
         # greedy: take segments in order until we land inside the band
@@ -127,9 +128,22 @@ def build_brief(probe, segplan):
     L.append("")
     if "target" in sp:
         t = sp["target"]
-        L.append(f"**Target {t['lo']}–{t['hi']}s:** achieved {t['achieved']}s "
-                 f"({'IN BAND' if t['in_band'] else 'OUT OF BAND'}) — "
-                 f"keep {t['kept']} beats, drop {t['dropped']}")
+        kept, dropped = t["kept"], t["dropped"]
+        beat_word = "beat" if kept == 1 else "beats"
+        if t["in_band"]:
+            L.append(f"**Target {t['lo']}–{t['hi']}s:** achieved {t['achieved']}s "
+                     f"(IN BAND) — keep {kept} {beat_word}")
+        else:
+            avail = sp.get("total_s", t["achieved"])
+            short_by = round(t["lo"] - avail, 2)
+            if avail < t["lo"]:
+                L.append(f"**Target {t['lo']}–{t['hi']}s:** achieved {avail}s "
+                         f"(OUT OF BAND) — source is {short_by}s too short; "
+                         f"add more footage or lower the target")
+            else:
+                L.append(f"**Target {t['lo']}–{t['hi']}s:** achieved {t['achieved']}s "
+                         f"(OUT OF BAND) — kept {kept} {beat_word}, "
+                         f"dropped {dropped}")
         L.append("")
 
     # vision prompt

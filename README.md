@@ -335,12 +335,30 @@ vidscope/
 ├── skill/SKILL.md        # drop-in agent skill (Claude, Hermes, any agent)
 ├── examples/
 │   └── agent_example.py  # a complete agent loop, runnable
+├── tests/
+│   └── adversarial.py    # 22 checks that try to break it
 └── docs/
     └── worked-example.md # one clip, three rungs, one real finding
 ```
 
 Each `vd_*.py` module also runs standalone, so you can call or import it
 directly instead of going through the dispatcher.
+
+## Tests
+
+```bash
+python3 tests/adversarial.py
+```
+
+22 checks that try to break the tool: missing, empty and non-video files,
+audio-only input, single-frame clips, out-of-range and over-supplied
+timestamps, unicode paths, rotated streams, low frame rates, concurrent runs,
+and freezes that run to end-of-file.
+
+Every check asserts a **behaviour**, not just an exit code — the first version
+of this suite passed 22/22 against code with three known bugs in it, because
+two assertions only verified `returncode == 0`. The suite has since been run
+against deliberately reintroduced bugs to confirm it actually fails.
 
 ## Contributing
 

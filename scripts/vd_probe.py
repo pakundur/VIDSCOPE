@@ -22,6 +22,43 @@ def run(cmd):
 
 
 # ---------------------------------------------------------------- pass 1
+def _read_rotation(stream):
+    """Return the display rotation in degrees, or None.
+
+    ffmpeg 8 (and modern ffprobe generally) no longer populates `tags.rotate`;
+    the rotation lives in the display matrix side data as `rotation` (degrees,
+    counter-clockwise). Older files may still carry the tag. Check both, side
+    data first, because that is what a player actually applies.
+    """
+    for sd in stream.get("side_data_list") or []:
+        if "rotation" in sd:
+            try:
+                return int(float(sd["rotation"]))
+            except (TypeError, ValueError):
+                pass
+    tag = (stream.get("tags") or {}).get("rotate")
+    if tag is not None:
+        try:
+            return int(float(tag))
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def display_dims(v):
+    """(width, height) as a player will show them, honouring rotation.
+
+    A 720x1280 stream tagged 90/270 is *displayed* 1280x720. Every orientation,
+    aspect and resolution decision must use these values, not the stored ones,
+    or a landscape video in a portrait container is silently treated as 9:16.
+    """
+    w, h = v.get("width") or 0, v.get("height") or 0
+    rot = abs(v.get("rotation") or 0) % 180
+    if rot == 90:
+        return h, w
+    return w, h
+
+
 def probe_container(path):
     rc, out = run([
         "ffprobe", "-v", "error", "-print_format", "json",
@@ -63,10 +100,7 @@ def probe_container(path):
                 "nb_frames": s.get("nb_frames"),
                 "duration_s": float(s.get("duration", 0) or 0),
                 "display_aspect_ratio": s.get("display_aspect_ratio"),
-                # rotation matters: phone clips often carry a 90/270 matrix
-                "rotation": int(float(
-                    (s.get("tags") or {}).get("rotate", 0) or 0
-                )) if (s.get("tags") or {}).get("rotate") else None,
+                "rotation": _read_rotation(s),
             }
             info["video"] = v
             info["streams"].append({"type": "video", **v})
@@ -80,12 +114,13 @@ def probe_container(path):
             })
 
     if info["video"]:
-        w, h = info["video"]["width"], info["video"]["height"]
-        info["aspect_ratio"] = round(w / h, 4) if h else None
+        dw, dh = display_dims(info["video"])
+        info["display_width"], info["display_height"] = dw, dh
+        info["aspect_ratio"] = round(dw / dh, 4) if dh else None
         info["orientation"] = (
-            "portrait" if h > w else "landscape" if w > h else "square"
+            "portrait" if dh > dw else "landscape" if dw > dh else "square"
         )
-        # TikTok Reels 9:16 tolerance band
+        # TikTok Reels 9:16 tolerance band, on DISPLAY dims
         ar = info["aspect_ratio"] or 0
         info["is_9_16"] = abs(ar - 0.5625) < 0.02
     return info
@@ -143,21 +178,56 @@ def black_intervals(path, min_dur=0.3, pic_th=0.98):
     return hits
 
 
-def freeze_intervals(path, noise_db=-60, min_dur=0.4):
+def freeze_intervals(path, noise_db=-60, min_dur=0.4, duration=None):
+    """Frozen-frame intervals.
+
+    ffmpeg only emits `freeze_end` / `freeze_duration` when the freeze actually
+    ends before EOF. A clip that is frozen *at the end* — the worst case, since
+    it reads as a hang — logs `freeze_start` alone and nothing else. Parsing
+    starts/ends as parallel arrays silently drops those, so a 3-second still
+    frame passed as clean. Track open intervals instead and close any that are
+    still open at EOF using the clip duration.
+    """
     rc, out = run([
         "ffmpeg", "-hide_banner", "-i", str(path),
         "-vf", f"freezedetect=n={noise_db}dB:d={min_dur}",
         "-f", "null", "-",
     ])
-    starts = [float(x) for x in re.findall(r"freeze_start:\s*([\d.]+)", out)]
-    ends = [float(x) for x in re.findall(r"freeze_end:\s*([\d.]+)", out)]
-    durs = [float(x) for x in re.findall(r"freeze_duration:\s*([\d.]+)", out)]
-    return [
-        {"start": round(s, 3),
-         "end": round(ends[i], 3) if i < len(ends) else None,
-         "duration": round(durs[i], 3) if i < len(durs) else None}
-        for i, s in enumerate(starts)
-    ]
+    hits = []
+    open_start = None
+    for line in out.splitlines():
+        m = re.search(r"freeze_start:\s*([\d.]+)", line)
+        if m:
+            open_start = float(m.group(1))
+            continue
+        m = re.search(r"freeze_duration:\s*([\d.]+)", line)
+        if m and open_start is not None:
+            dur = float(m.group(1))
+            hits.append({"start": round(open_start, 3),
+                         "end": round(open_start + dur, 3),
+                         "duration": round(dur, 3),
+                         "runs_to_eof": False})
+            continue
+        m = re.search(r"freeze_end:\s*([\d.]+)", line)
+        if m and open_start is not None:
+            end = float(m.group(1))
+            # freeze_duration usually already closed this; avoid duplicates
+            if not hits or hits[-1]["start"] != round(open_start, 3):
+                hits.append({"start": round(open_start, 3),
+                             "end": round(end, 3),
+                             "duration": round(end - open_start, 3),
+                             "runs_to_eof": False})
+            open_start = None
+
+    # freeze still open at EOF -> it never ended
+    if open_start is not None:
+        end = duration if duration else None
+        dur = (end - open_start) if end else None
+        hits.append({"start": round(open_start, 3),
+                     "end": round(end, 3) if end else None,
+                     "duration": round(dur, 3) if dur else None,
+                     "runs_to_eof": True})
+    return hits
 
 
 # ---------------------------------------------------------------- pass 4
@@ -209,9 +279,12 @@ def luma_stats(path, fps_sample=2):
         "y_avg_min": round(min(ya), 2),
         "y_avg_max": round(max(ya), 2),
         "sat_max_mean": round(sum(sm) / len(sm), 2) if sm else None,
-        # a frame is "crushed" only if its own floor AND mean are both near-black
+        # A frame is "crushed" when its own floor is at or below the 16 code
+        # value AND its mean is near-black. Testing y_min <= 16 alone is
+        # useless: pure black sits at exactly 16, and so does every frame with
+        # one dark corner. Both conditions must hold.
         "crushed_black_frames": sum(1 for f in frames
-                                    if f.get("y_min", 255) <= 16 and f["y_avg"] < 32),
+                                    if f.get("y_min", 255) <= 17 and f["y_avg"] < 32),
         # blown only if its own ceiling AND mean are both near-white
         "blown_white_frames": sum(1 for f in frames
                                   if f.get("y_max", 0) >= 235 and f["y_avg"] > 210),
@@ -234,10 +307,17 @@ def verdict(clips, scenes, blacks, freezes, luma):
                 f"BLACK — {worst['duration']:.1f}s at {worst['start']:.1f}s; trim or it reads as a stall"
             )
     if freezes:
-        worst = max(freezes, key=lambda f: f["duration"] or 0)
-        if (worst["duration"] or 0) >= 1.5:
+        worst = max(freezes, key=lambda f: (f["duration"] or 0))
+        wd = worst.get("duration")
+        if wd is None and worst.get("runs_to_eof"):
+            # freeze to EOF with unknown length -> it is the tail of the clip
             flags.append(
-                f"FROZEN — {(worst['duration'] or 0):.1f}s at {worst['start']:.1f}s; viewers read this as buffering"
+                f"FROZEN — from {worst['start']:.1f}s to end of clip; the video "
+                f"stops moving before it stops playing"
+            )
+        elif (wd or 0) >= 1.5:
+            flags.append(
+                f"FROZEN — {wd:.1f}s at {worst['start']:.1f}s; viewers read this as buffering"
             )
     if luma.get("dark_frames", 0) > luma.get("samples", 1) * 0.3:
         flags.append(
@@ -246,25 +326,35 @@ def verdict(clips, scenes, blacks, freezes, luma):
     if luma.get("y_avg_mean") is not None and luma["y_avg_mean"] > 200:
         flags.append("OVEREXPOSED — mean luma {:.0f}/255".format(luma["y_avg_mean"]))
     if not clips.get("is_9_16") and clips.get("video"):
+        dw = clips.get("display_width") or clips["video"]["width"]
+        dh = clips.get("display_height") or clips["video"]["height"]
+        rot = clips["video"].get("rotation")
+        note = ""
+        if rot:
+            sw, sh = clips["video"]["width"], clips["video"]["height"]
+            note = f" [stored {sw}x{sh}, rotation {rot}°]"
         flags.append(
-            f"ASPECT — {clips['video']['width']}x{clips['video']['height']} "
-            f"({clips.get('orientation')}); needs 9:16 crop for Shorts/TikTok/Reels"
+            f"ASPECT — {dw}x{dh} displayed ({clips.get('orientation')}){note}; "
+            f"needs 9:16 crop for Shorts/TikTok/Reels"
         )
     # resolution is independent of aspect: 576x1024 is a valid 9:16 but still
     # an upscale on a 1080x1920 timeline, and upscaled footage looks soft next
-    # to native clips in the same feed.
+    # to native clips in the same feed. Judge on DISPLAY dims, so a rotated
+    # landscape clip is not credited with portrait resolution.
     vv = clips.get("video") or {}
-    if vv.get("width") and vv.get("height"):
-        short_side = min(vv["width"], vv["height"])
+    dw = clips.get("display_width") or vv.get("width")
+    dh = clips.get("display_height") or vv.get("height")
+    if dw and dh:
+        short_side = min(dw, dh)
         if short_side < 720:
             flags.append(
-                f"LOW-RES — {vv['width']}x{vv['height']}; upscaling to 1080x1920 "
-                f"will look soft (short side {short_side} < 720)"
+                f"LOW-RES — {dw}x{dh}; upscaling to 1080x1920 will look soft "
+                f"(short side {short_side} < 720)"
             )
         elif short_side < 1080:
             flags.append(
-                f"SUB-HD — {vv['width']}x{vv['height']}; usable but below the "
-                f"1080x1920 native standard, mild softness when upscaled"
+                f"SUB-HD — {dw}x{dh}; usable but below the 1080x1920 native "
+                f"standard, mild softness when upscaled"
             )
     return flags
 
@@ -285,7 +375,7 @@ def main():
 
     scenes = scene_scores(path)
     blacks = black_intervals(path)
-    freezes = freeze_intervals(path)
+    freezes = freeze_intervals(path, duration=clips.get("duration_s"))
     luma = luma_stats(path)
 
     # top scene cuts = candidate segment boundaries

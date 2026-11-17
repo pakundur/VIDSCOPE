@@ -185,10 +185,18 @@ sampled frames" ≠ "no text anywhere" — say which one you did.
   every frame.
 - **`lavfi.scd.time` gives the exact timestamp** — use it instead of
   interpolating `frame_index × duration / frames`, which drifts.
-- **Rotation is metadata, not pixels.** A portrait phone clip can be stored
-  1920×1080 with a 90° rotation matrix. Check `tags.rotate` or the 9:16 check
-  wrongly fails.
-- **signalstats emits YMIN→YMAX per frame across separate lines.** Group per
+- **Rotation lives in side data, not tags.** ffmpeg 8 no longer populates
+  `tags.rotate`; the display matrix shows up as
+  `side_data_list[].rotation`. A 720×1280 stream tagged 90° is *displayed*
+  1280×720 — check side data first, fall back to the tag, and compute
+  orientation/resolution from the **display** dimensions or a landscape video
+  in a portrait container is silently treated as 9:16.
+- **`freezedetect` only emits `freeze_end` when the freeze ends.** A clip
+  frozen *at EOF* logs `freeze_start` alone. Parsing starts/ends as parallel
+  arrays drops it entirely, so a 3-second still frame passes as clean — the
+  worst miss, since a video that stops moving before it stops playing reads as
+  a hang. Track open intervals and close any still open using the clip duration.
+- **`signalstats` emits YMIN→YMAX per frame across separate lines.** Group per
   frame by opening a record on YMIN and closing on YMAX. Closing on an arbitrary
   key mixes values across frames and reports absurd clipping counts (e.g.
   "25/25 crushed black" on a well-exposed clip).
