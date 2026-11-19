@@ -36,7 +36,7 @@ rather than imported, so this single file runs from an isolated temporary
 directory with no sibling files. Requires only Python 3.8+ and ffmpeg/ffprobe
 on PATH. No third-party packages, no network access.
 
-MIT licensed. Source: https://github.com/pakundur/VIDSCOPE
+MIT licensed. Source repository: pakundur / VIDSCOPE on GitHub.
 """
 import argparse
 import json

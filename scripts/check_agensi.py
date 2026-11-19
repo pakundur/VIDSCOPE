@@ -50,7 +50,9 @@ results = []
 def check(n, name, ok, detail=""):
     results.append((n, name, ok, detail))
 
-files = [p for p in PKG.rglob("*") if p.is_file()]
+files = sorted(p for p in PKG.rglob("*") if p.is_file()
+               and "__pycache__" not in p.parts
+               and p.suffix not in {".pyc", ".pyo"})
 text_files = [p for p in files if p.suffix in {".md", ".py", ".txt", ".yaml", ".yml", ".json", ".sh"}]
 
 # 1. file structure
