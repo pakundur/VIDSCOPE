@@ -48,6 +48,24 @@ vidscope brief clip.mp4 --target 21 34
 Run `probe` first. It is free and it tells you which frames are worth spending
 a vision call on.
 
+## Measured accuracy
+
+These are measured against ground truth, not estimated. A number without its
+denominator does not appear in this project.
+
+| Measurement | Result | Method |
+|---|---|---|
+| Cut precision | 91/91 | 20 real stock clips, each cut checked against frame difference |
+| Cut recall | 30/30 | Cuts constructed by splicing, so ground truth is arithmetic |
+| Black detection | 0 mismatches / 20 | Scored against raw `blackdetect` output |
+| Freeze detection | 0 mismatches / 20 | Scored against raw `freezedetect` output |
+
+**Not proven:** dissolves, wipes and fades are not detected. No 4K, HDR,
+10-bit, VFR or long-form footage has been tested. A cut immediately followed by
+a byte-identical duplicate frame scores 0.000 in `scdet` and goes unreported.
+
+Full method: `docs/cut-detection-accuracy.md` in the repository.
+
 ## Permissions
 
 Declared honestly, because a scanner rewards transparency and so does a buyer:
@@ -59,8 +77,8 @@ Declared honestly, because a scanner rewards transparency and so does a buyer:
 - **Terminal / shell.** Invokes `ffmpeg` and `ffprobe` with argument lists. It
   does not use a shell, so there is no command string to inject into.
 - **Network access.** None. There is no HTTP client, no socket, no telemetry,
-  and no download step in this skill. If you find one, please report it to
-  `security@` the address on the repository.
+  and no download step in this skill. The package contains zero URLs of any
+  kind, so there is nothing to point at an endpoint.
 - **Environment variables.** None are read. No credentials are needed, so none
   are stored or harvested.
 

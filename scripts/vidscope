@@ -21,7 +21,7 @@ COMMANDS = {
     "brief": ("vd_brief.py", "markdown brief + beat table + pre-filled vision prompt"),
 }
 
-VERSION = "1.0.0"
+VERSION = "1.0.4"
 
 
 def usage():

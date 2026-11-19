@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.0.4 — 2026-11-19
+
+Positioning and evidence release. No behaviour change to any command; the
+output of `probe`, `sheet` and `brief` is byte-identical to 1.0.3. What
+changed is what the project says about itself, and why.
+
+### Added — measurement
+
+- **`docs/cut-detection-accuracy.md`** now leads the project. Cut precision
+  **91/91** on 20 real stock clips (every reported cut checked against actual
+  frame-to-frame difference), and cut recall **30/30** on constructed splices,
+  where ground truth is arithmetic rather than inferred. Both numbers were
+  already measured in 1.0.3; they were buried behind the README.
+- **A "what is still not proven" section** sits directly under the results:
+  no 4K, HDR, 10-bit, VFR or long-form; no dissolves, wipes or fades. Publishing
+  the untested cases is the point of the document.
+- **The `scdet` duplicate-frame limitation** is documented with frame-level
+  evidence. A cut followed by a byte-identical duplicate scores 0.000 and goes
+  unreported. Characterised, not fixed.
+
+### Added — positioning docs
+
+- **`docs/positioning.md`** records the position, the three claims in priority
+  order, and every competitor that is conceded in writing (PySceneDetect is
+  better at detection; the agent-video space is crowded; "zero dependencies" is
+  not unique). Also lists the conditions under which the position would become
+  false.
+- **`docs/showing-this-to-someone.md`** holds a Show HN draft, a CV line,
+  answers to the four questions a reviewer will actually ask, and a "what not
+  to say" list.
+- **`docs/repo-metadata.md`** carries the About description and all 20 GitHub
+  topics, with the reason each was chosen. GitHub's default search matches only
+  name, description and topics, so these three fields matter more than README
+  prose.
+
+### Changed — README
+
+- Opens on the measured accuracy table instead of a feature narrative. A
+  visitor sees results before prose.
+- New **"What this is, and what it is not"** section, placed before the install
+  instructions, conceding PySceneDetect and the agent-video competitors by name
+  and link.
+- **Security** section states that the package contains zero URLs, zero pip
+  dependencies, no `shell=True`, and no temp files beside the input.
+- Em dashes removed from all prose. The remaining eleven are inside literal tool
+  output and code comments.
+
 ## 1.0.3 — 2026-11-17
 
 Closes the last two gaps from the 1.0.2 review: the sidecar could not describe
