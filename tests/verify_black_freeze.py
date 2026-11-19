@@ -2,7 +2,7 @@
 """Score VidScope's black/freeze claims against independent ffmpeg ground truth."""
 import json, glob, subprocess, os, re
 
-os.chdir('/data/data/com.termux/files/home/folders/work4/stock')
+os.chdir(os.environ.get('VS_STOCK', os.path.join('..', 'work4', 'stock')))
 
 def run(args):
     return subprocess.run(args, capture_output=True, text=True).stderr

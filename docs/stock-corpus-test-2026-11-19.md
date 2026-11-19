@@ -6,11 +6,15 @@ VidScope: v1.0.3, commit 9c599e6, invoked from PATH
 
 ## Corpus
 
-20 real stock clips pulled from the R2 bucket `resepifesbuk-videos`
-(public base `pub-916db35501284776893235d4b8b6b758.r2.dev`), sampled
-deterministically (seed 7) across all 11 categories present in
-`~/folders/video_registry.csv`. 58 MB total. All portrait,
+20 real stock clips from a private corpus bucket, sampled
+deterministically (seed 7) across all 11 categories present in the
+corpus registry. 58 MB total. All portrait,
 720x1280 or 576x1024, h264, 30 fps, 8.6 s to 28.0 s.
+
+The corpus is not published. Its contents are third-party stock footage
+and its location is not part of this project, so the bucket, its public
+base and the registry path are omitted here. The measurement method below
+is complete and reproduces on any folder of clips.
 
 Ground truth for black and freeze was measured independently with raw
 ffmpeg filters, not via VidScope's own code paths:

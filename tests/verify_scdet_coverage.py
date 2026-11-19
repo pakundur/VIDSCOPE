@@ -1,6 +1,6 @@
 """Re-measure with FULL per-frame scdet data (scdet=t=0), not just above-threshold frames."""
 import subprocess, re, os, statistics
-os.chdir('/data/data/com.termux/files/home/folders/work4/stock')
+os.chdir(os.environ.get('VS_STOCK', os.path.join('..', 'work4', 'stock')))
 
 def full_scores(f):
     e = subprocess.run(['ffmpeg','-hide_banner','-nostats','-i',f,'-vf',

@@ -14,15 +14,14 @@ import subprocess
 import sys
 import urllib.request
 
-ENV = pathlib.Path.home() / ".cfenv"
-ZIP = pathlib.Path.home() / "repos/vidscope/dist/agensi/vidscope-agensi.zip"
-# The public r2.dev base (pub-916db35501284776893235d4b8b6b758) serves the
-# resepifesbuk-videos bucket, not resepifesbuk. Verified: a known key in
-# resepifesbuk-videos returns 200 on that base, the same key in the
-# resepifesbuk bucket 404s. Upload here so the download link actually works.
-BUCKET = "resepifesbuk-videos"
-KEY = "vidscope/vidscope-agensi.zip"
-PUBLIC_BASE = "https://pub-916db35501284776893235d4b8b6b758.r2.dev"
+# All deployment specifics come from the environment, so this file carries no
+# bucket names, account ids or hostnames. Source an env file before running:
+#   R2_ACCESS_KEY, R2_SECRET_KEY, R2_ENDPOINT, R2_BUCKET, R2_PUBLIC_BASE
+ENV = pathlib.Path(os.environ.get("R2_ENV_FILE", pathlib.Path.home() / ".cfenv"))
+ZIP = pathlib.Path(os.environ.get(
+    "VS_ZIP", pathlib.Path.home() / "repos/vidscope/dist/agensi/vidscope-agensi.zip"))
+KEY = os.environ.get("R2_KEY", "vidscope/vidscope-agensi.zip")
+BUCKET = os.environ.get("R2_BUCKET", "")
 
 
 def load_env():
@@ -116,11 +115,15 @@ def main():
         print("MISMATCH: upload corrupted")
         return 1
 
-    print(f"\nobject key: {BUCKET}/{KEY}")
-    print("public download URL:")
-    print(f"  {PUBLIC_BASE}/{KEY}")
-    print("\nverify the link serves before sharing it:")
-    print(f"  curl -sI {PUBLIC_BASE}/{KEY} | head -1")
+    public_base = os.environ.get("R2_PUBLIC_BASE", "").rstrip("/")
+    print(f"\nobject key: s3://{BUCKET}/{KEY}")
+    if public_base:
+        print("public download URL:")
+        print(f"  {public_base}/{KEY}")
+        print("\nverify the link serves before sharing it:")
+        print(f"  curl -sI {public_base}/{KEY} | head -1")
+    else:
+        print("R2_PUBLIC_BASE not set; no public URL to report.")
     return 0
 
 

@@ -7,7 +7,7 @@ a large discontinuity far from any reported cut is a miss.
 """
 import json, glob, subprocess, os, re, bisect
 
-os.chdir('/data/data/com.termux/files/home/folders/work4/stock')
+os.chdir(os.environ.get('VS_STOCK', os.path.join('..', 'work4', 'stock')))
 
 def frame_scores(f):
     e = subprocess.run(['ffmpeg','-hide_banner','-nostats','-i',f,'-vf',

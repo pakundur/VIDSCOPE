@@ -11,7 +11,9 @@ This keeps ground truth arithmetic instead of inferred.
 """
 import subprocess, re, os, json
 
-WORK='/data/data/com.termux/files/home/folders/work4'
+# Corpus directory. Point VS_CORPUS at a folder of clips; '../work4'
+# is the author's local layout and is only a convenience default.
+WORK = os.environ.get('VS_CORPUS', os.path.join('..', 'work4'))
 THR=12.0
 MIN_LEN=0.8   # shortest segment worth splicing
 

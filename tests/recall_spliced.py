@@ -17,7 +17,9 @@ frame, are not perceptible cuts. So this test reports both:
 """
 import subprocess, re, os, json, random, hashlib
 
-WORK='/data/data/com.termux/files/home/folders/work4'
+# Corpus directory. Point VS_CORPUS at a folder of clips; '../work4'
+# is the author's local layout and is only a convenience default.
+WORK = os.environ.get('VS_CORPUS', os.path.join('..', 'work4'))
 OUT=os.path.join(WORK,'spliced')
 THR=12.0
 TOL=0.30
