@@ -178,11 +178,20 @@ sampled frames" ≠ "no text anywhere". Say which one you did.
 ## Pitfalls
 
 ### ffmpeg / scdet
-- **`scdet` + `metadata=mode=print` = zero scores.** scdet logs its own metadata
-  to stderr; chaining `metadata=mode=print` after it silences those lines and
-  yields a false "0 cuts detected". Do not chain it.
-- **scdet `t=` is a threshold on the 0–100 scale**, not a duration. `t=1` logs
-  every frame.
+- **`scdet` takes two thresholds and both drop frames.** `s=` is the scene
+  score floor (0–100); `t=` is the scene time window in seconds over which the
+  score is accumulated. `scdet=s=1:t=1` logs only frames scoring above 1/100.
+  On a 301-frame clip measured here, 2 frames survived, so any statistic
+  derived from the log described the surviving tail rather than the clip. Use
+  `scdet=s=0:t=0` to log every frame at per-frame resolution.
+- **`metadata=mode=print` after scdet does not silence it.** It emits
+  `lavfi.scd.score` a second time as `key=value`, so a parser matching both
+  `score:` and `score=` counts every frame twice. Match one form only.
+- **Parse metadata as blocks, not lines.** Each frame is a `pts_time:` header
+  followed by `mafd=`, `score=`, `time=` on separate lines, with scdet's own
+  line for the next frame interleaved between blocks. A line-at-a-time parse
+  returns a score with no timestamp, and a cut loop that requires a timestamp
+  then drops every cut while still reporting a correct frame count.
 - **`lavfi.scd.time` gives the exact timestamp**, so use it instead of
   interpolating `frame_index × duration / frames`, which drifts.
 - **Rotation lives in side data, not tags.** ffmpeg 8 no longer populates
