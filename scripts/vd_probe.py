@@ -127,34 +127,74 @@ def probe_container(path):
 
 
 # ---------------------------------------------------------------- pass 2
-_SCDET = re.compile(r"lavfi\.scd\.score:\s*([0-9.]+)")
-_SCDET_TIME = re.compile(r"lavfi\.scd\.time:\s*([0-9.]+)")
+_SCDET = re.compile(r"lavfi\.scd\.score=\s*([0-9.]+)")
+_SCDET_TIME = re.compile(r"lavfi\.scd\.time=\s*([0-9.]+)")
 
 
 def scene_scores(path):
     """Per-frame scene-change score with exact timestamps.
 
-    NOTE: `scdet` logs its own metadata straight to stderr. Adding a
-    `metadata=mode=print` filter after it SILENCES those lines — you get zero
-    scores and a false "no cuts detected". Do not chain metadata=print here.
+    `scdet` takes two thresholds and BOTH drop frames from the log:
+
+        s  scene score floor (0-100). Frames scoring below it are not logged.
+        t  scene time floor (seconds). Each frame's score is accumulated over
+           this window before comparison.
+
+    So `scdet=s=1:t=1` logs only frames scoring above 1/100. On a
+    low-motion clip that is a handful of frames out of hundreds: measured
+    on a 301-frame stock clip, 2 frames survived. `frames_scored` and
+    `mean_score` are derived from this list, so using s=1 made both fields
+    report the surviving tail rather than the clip (mean 5.348 reported
+    against a true per-frame mean of 0.211, a 25x overstatement).
+
+    `s=0` keeps every frame. `t=0` sets the accumulation window to a single
+    frame, which is the per-frame score, not a coarser one.
+
+    NOTE: `scdet` logs its own metadata straight to stderr, but chaining
+    `metadata=mode=print` after it does NOT silence those lines: it emits the
+    `lavfi.scd.score` value a second time in `key=value` form. The first
+    regex above therefore matches `score=` (the metadata copy) and the older
+    `score:` (scdet's native line) is left alone, so each frame is counted
+    once only if exactly one form is parsed. Verified on a 301-frame file:
+    301 rows, not 602.
     """
     rc, out = run([
         "ffmpeg", "-hide_banner", "-i", str(path),
-        "-vf", "scdet=s=1:t=1",   # t=1 keeps every frame in the log
+        "-vf", "scdet=s=0:t=0,metadata=mode=print",
         "-f", "null", "-",
     ])
+    # `metadata=mode=print` emits each frame as its own BLOCK of lines:
+    #
+    #     [Parsed_metadata_1 @ ...] frame:1  pts:512  pts_time:0.0333333
+    #     [Parsed_metadata_1 @ ...] lavfi.scd.mafd=2.029
+    #     [Parsed_metadata_1 @ ...] lavfi.scd.score=2.029
+    #     [Parsed_metadata_1 @ ...] lavfi.scd.time=0.0333333
+    #
+    # and `scdet`'s own native line for the NEXT frame appears interleaved
+    # between blocks. So score and time are never on one line and a
+    # line-at-a-time parse yields (score, None) for every frame, which drops
+    # every cut because the cut loop requires a timestamp. Parse whole blocks
+    # keyed on the `pts_time` frame header instead.
     pairs = []
+    score = None
+    prev_t = 0.0
     for line in out.splitlines():
+        mt = re.search(r"pts_time:([0-9.]+)", line)
+        if mt:
+            # a new frame header: flush the previous block
+            if score is not None:
+                pairs.append({"t": prev_t, "score": score})
+            prev_t = round(float(mt.group(1)), 3)
+            score = None
+            continue
         ms = _SCDET.search(line)
-        if not ms:
-            continue
-        mt = _SCDET_TIME.search(line)
-        try:
-            score = round(float(ms.group(1)), 4)
-            t = round(float(mt.group(1)), 3) if mt else None
-        except ValueError:
-            continue
-        pairs.append({"t": t, "score": score})
+        if ms:
+            try:
+                score = round(float(ms.group(1)), 4)
+            except ValueError:
+                score = None
+    if score is not None:
+        pairs.append({"t": prev_t, "score": score})
     return pairs
 
 
