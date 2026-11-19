@@ -11,8 +11,9 @@ This lets an agent answer "what is in this video?" without watching it.
 - Detects scene cuts with exact timestamps
 - Finds black intervals and frozen frames
 - Reports exposure faults, low resolution and wrong aspect ratio
-- Builds a contact sheet with timestamps so a vision model can read what is
-  actually on screen, including on-screen text, logos and faces
+- Builds a timestamped contact sheet so a vision model can read what is actually
+  on screen. At 330px this is triage only; text and branding must be confirmed at
+  full resolution before they change a decision.
 - Produces a segment plan inside a target duration band
 
 ## Requirements
@@ -23,17 +24,18 @@ This lets an agent answer "what is in this video?" without watching it.
 
 ## Install
 
-Copy the `vidscope/skill/` directory into your agent's skills directory, and
-make `vidscope/scripts/` available on `PATH` (or call the scripts directly).
+This package is three files. Copy them wherever your agent keeps skills, keeping
+`SKILL.md` at the package root and `scripts/vidscope.py` beside it.
 
 ```bash
 vidscope --help
 ```
 
-If the `vidscope` command is not available, run it from the repository root:
+If `vidscope` is not on your `PATH`, call the bundled script directly from the
+package root:
 
 ```bash
-python3 scripts/vidscope COMMAND ...
+python3 scripts/vidscope.py COMMAND ...
 ```
 
 ## Usage

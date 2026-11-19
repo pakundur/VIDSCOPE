@@ -7,7 +7,7 @@ Pass 2  scene-change scores per frame (ffmpeg scdet)
 Pass 3  black / freeze intervals (ffmpeg blackdetect, freezedetect)
 Pass 4  per-frame luma + saturation (ffmpeg signalstats)
 
-Usage:  python3 vd_probe.py FILE [--json]
+Usage:  python3 vidscope.py probe FILE [--json]
 """
 import json
 import re
@@ -406,7 +406,7 @@ def verdict(clips, scenes, blacks, freezes, luma):
 
 def main():
     if len(sys.argv) < 2:
-        print("usage: vd_probe.py FILE [--json]", file=sys.stderr)
+        print("usage: vidscope probe FILE [--json]", file=sys.stderr)
         sys.exit(2)
     path = Path(sys.argv[1])
     if not path.exists():

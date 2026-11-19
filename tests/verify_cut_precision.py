@@ -29,9 +29,19 @@ for jf in sorted(glob.glob('out/*.json')):
         continue
     cuts = [c['time'] for c in (d['scene'].get('top_cuts') or [])]
     times = [t for t,_ in fs]
-    # threshold for a "genuine" discontinuity: this clip's own p99, floored
-    ss = sorted(s for _,s in fs)
-    thr = max(0.05, ss[int(len(ss)*0.99)])
+    # Threshold for a "genuine" discontinuity.
+    #
+    # p99 (the first method tried) is WRONG on this corpus: these are edited
+    # montages with cuts every 1-3s, so the 99th-percentile score sits inside
+    # the cut population and a real cut can fall below it. That method reported
+    # 79.1%, and individual inspection showed the misses were real cuts.
+    #
+    # Correct method, as documented in docs/cut-detection-accuracy.md:
+    # an adaptive threshold of 8x the clip's MEDIAN score. On a montage the
+    # median sits in the quiet within-shot population, so 8x it separates cuts
+    # from motion without swallowing them.
+    med = sorted(s for _,s in fs)[len(fs)//2]
+    thr = max(0.05, med * 8)
     # local discontinuity magnitude around a timestamp (window +-0.25s)
     def local_mag(t):
         lo = bisect.bisect_left(times, t-0.25)

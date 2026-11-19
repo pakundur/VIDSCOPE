@@ -15,6 +15,13 @@ population and a real cut can fall below it. Re-scoring against an
 adaptive threshold (8x the clip median) gave 100% and individual
 inspection confirmed it.
 
+Note (v1.1): `tests/verify_cut_precision.py` still carried the old p99
+threshold for a while after this document was corrected, so re-running
+the suite printed 79.1% even though the tool was unchanged. That was a
+stale harness, not a regression: the script now uses the 8x median rule
+below and reproduces 91/91. If you see 79.1% again, check the harness
+before doubting the tool.
+
 ## Recall: 30/30 on constructed cuts
 
 Recall cannot be measured against footage whose cut list you guessed.

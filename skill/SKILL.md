@@ -1,6 +1,6 @@
 ---
 name: vidscope
-description: Use when you need to understand or verify a video file's content without watching it. Detect scene cuts, black/frozen frames, exposure faults, and read what is actually on screen (products, actions, on-screen text, logos, faces). Load for "what's in this video", "check this clip before I post", "detect scenes", "does this video have text/faces", "is this clip usable", or any pre-publish / pre-edit audit.
+description: Use when you need to understand or verify a video file without watching it. Measures scene cuts with exact timestamps, black intervals, frozen frames, exposure and resolution faults, and builds timestamped contact sheets so a vision model can read what is actually on screen. Load for "what's in this video", "check this clip before I post", "detect scenes", "is this clip usable", "find the frozen frames", or any pre-publish or pre-edit audit. Measurements only, no editing.
 license: MIT
 ---
 
@@ -28,8 +28,8 @@ library. No OpenCV, no numpy, no pip installs.
 vidscope --help
 ```
 
-If the `vidscope` command is not available, call the scripts directly from the
-repository root: `python3 scripts/vidscope COMMAND ...`.
+If the `vidscope` command is not on your `PATH`, call the bundled script directly
+from the package root: `python3 scripts/vidscope.py COMMAND ...`.
 
 ## The two layers, and the order to run them
 
