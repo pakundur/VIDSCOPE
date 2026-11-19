@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.1 — 2026-11-19
+
+Documentation and packaging correctness release. No behaviour change: `probe`,
+`sheet` and `brief` produce identical output to 1.0.4.
+
+### Fixed
+
+- **The documented install command did not work.** Both `README.md` and
+  `SKILL.md` told buyers to run `python3 scripts/vidscope`, but the bundled
+  file is `vidscope.py`. Anyone following the instructions hit a
+  "No such file or directory" error on their first command. Both now say
+  `python3 scripts/vidscope.py`.
+- **An install path that does not exist.** `README.md` said to copy
+  `vidscope/skill/` into your agent's skills directory. The shipped package
+  root *is* `vidscope/`; there is no nested `skill/`. Replaced with a
+  description of the three files that actually ship.
+- **`probe` printed the internal module name in its usage line.** Running it
+  with no arguments said `usage: vd_probe.py FILE [--json]`, exposing a
+  filename that does not exist in the package. Now `usage: vidscope probe
+  FILE [--json]`, consistent with `sheet` and `brief`.
+- **The SKILL.md description overclaimed.** It said the tool detects and reads
+  "products, actions, on-screen text, logos, faces". VidScope does not read
+  anything: it builds a contact sheet for a vision model to read, and at 330px
+  that sheet is triage only. The description now says exactly that, which also
+  removes a claim a marketplace security reviewer would rightly question.
+- **`tests/verify_cut_precision.py` used a threshold the accuracy doc had
+  already rejected.** After `docs/cut-detection-accuracy.md` was corrected to
+  use 8x the clip median instead of the 99th percentile, the test script was
+  never updated, so running the suite printed 79.1% against an unchanged tool.
+  Now uses the documented rule and reproduces 91/91.
+- **The shipped package contained a URL and a stale `.pyc`.** The build script
+  injected a GitHub link into the source header on every build, which trips
+  URL scanners, and a `__pycache__` directory had been copied into `dist/`.
+  The package now contains zero URLs and exactly three files.
+
+### Added
+
+- Listing fields for the Agensi page: explicit `requirements`, a `permissions`
+  block declaring no network and no environment reads, six buyer FAQs, and a
+  `known_limitations` field that states the untested scope up front.
+
 ## 1.0.4 — 2026-11-19
 
 Positioning and evidence release. No behaviour change to any command; the
