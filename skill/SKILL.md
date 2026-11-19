@@ -1,28 +1,28 @@
 ---
 name: vidscope
-description: Use when you need to understand or verify a video file's content without watching it — detect scene cuts, black/frozen frames, exposure faults, and read what is actually on screen (products, actions, on-screen text, logos, faces). Load for "what's in this video", "check this clip before I post", "detect scenes", "does this video have text/faces", "is this clip usable", or any pre-publish / pre-edit audit.
+description: Use when you need to understand or verify a video file's content without watching it. Detect scene cuts, black/frozen frames, exposure faults, and read what is actually on screen (products, actions, on-screen text, logos, faces). Load for "what's in this video", "check this clip before I post", "detect scenes", "does this video have text/faces", "is this clip usable", or any pre-publish / pre-edit audit.
 license: MIT
 ---
 
-# VidScope — Video Frame Detection & Content Understanding
+# VidScope: Video Frame Detection & Content Understanding
 
 Turn an opaque video file into facts you can act on: what happens, when,
 whether it is technically sound, and whether it is safe to ship.
 
 ## When to use
 
-- **"What's in this video?"** — describe content, beats, product, setting.
-- **Pre-publish audit** — verify no faces, logos, watermarks, on-screen text.
-- **Pre-edit triage** — find usable segments and cut points before cutting.
-- **Quality check** — catch black frames, freezes, bad exposure, wrong aspect.
-- **Batch triage** — screen 50 clips for which are worth watching.
+- **"What's in this video?"**: describe content, beats, product, setting.
+- **Pre-publish audit**: verify no faces, logos, watermarks, on-screen text.
+- **Pre-edit triage**: find usable segments and cut points before cutting.
+- **Quality check**: catch black frames, freezes, bad exposure, wrong aspect.
+- **Batch triage**: screen 50 clips for which are worth watching.
 
 Do NOT use this for editing itself. This is measurement, not cutting.
 
 ## Setup
 
 Requires `ffmpeg` + `ffprobe` on `PATH` and Python 3.8+. Pure standard
-library — no OpenCV, no numpy, no pip installs.
+library. No OpenCV, no numpy, no pip installs.
 
 ```bash
 vidscope --help
@@ -31,7 +31,7 @@ vidscope --help
 If the `vidscope` command is not available, call the scripts directly from the
 repository root: `python3 scripts/vidscope COMMAND ...`.
 
-## The two layers — do both, in this order
+## The two layers, and the order to run them
 
 | Layer | Answers | Tool | Cost |
 |---|---|---|---|
@@ -42,7 +42,7 @@ repository root: `python3 scripts/vidscope COMMAND ...`.
 are worth spending a vision call on. Jumping straight to vision on a 60s video
 wastes calls on frames where nothing changes.
 
-## Step 1 — Signal pass
+## Step 1: Signal pass
 
 ```bash
 vidscope probe clip.mp4          # human-readable
@@ -69,15 +69,15 @@ with exact timestamps, black intervals, freeze intervals, luma stats, and a
 
 | cuts/min | meaning |
 |---|---|
-| < 6 | single continuous take — treat as ONE shot |
+| < 6 | single continuous take, treat as ONE shot |
 | 6–20 | normal demo/dialogue pacing |
 | 20–60 | fast montage, ~1–3s per shot |
 | > 60 | hyper-cut, or the detector is firing on motion not cuts |
 
-High scores are not always real cuts — a whip pan or a hand crossing frame
+High scores are not always real cuts. A whip pan or a hand crossing frame
 scores like one. Confirm boundaries by looking.
 
-## Step 2 — Contact sheet + vision
+## Step 2: Contact sheet and vision
 
 | Rung | Cell | Use for | Answers |
 |---|---|---|---|
@@ -97,13 +97,13 @@ every cell. Then read the sheet with a vision model:
 vision(sheet.jpg, question="<prompt from vidscope brief>")
 ```
 
-`vidscope brief` generates that prompt already containing the real timestamps —
+`vidscope brief` generates that prompt already containing the real timestamps, so
 prefer it over writing your own.
 
-### The 330px trap — where bad clips get shipped
+### The 330px trap, where bad clips get shipped
 
 **330px is triage, never verification.** At 330px you cannot read a label, a
-watermark, or a brand. You can only see that something *might* be there —
+watermark, or a brand. You can only see that something *might* be there,
 which is exactly the point, and never enough to decide.
 
 Escalate every text finding to rung 3 at the exact timestamp before it changes
@@ -111,14 +111,14 @@ what you do:
 
 ```
 rung 1 (330)  →  "there's text on the container"
-rung 2 (760)  →  0/15/35/55/75/92% — text persists? where?
+rung 2 (760)  →  0/15/35/55/75/92%. Does the text persist, and where?
 rung 3 (1080) →  zoom the suspect region, read the actual letters
 ```
 
-### Vision invents text — every hit is a LEAD, never a finding
+### Vision invents text, so every hit is a LEAD, never a finding
 
 Observed on real footage: a model reported "TEA", "GRAND", "HOME", "ON",
-"FASHION", and an entire "Adidas three-stripe logo" — **all disproven at full
+"FASHION", and an entire "Adidas three-stripe logo", **all disproven at full
 resolution.** Stitching, bezels, fabric patterns, and colour-blocking read as
 lettering to a downscaled eye.
 
@@ -141,14 +141,14 @@ invention.
 
 ### What tiles do NOT show you
 
-- **Audio** — a stream count, not speech or music.
-- **Motion quality** — blur, judder, stabilisation.
-- **Whether the payoff lands** — a clean frame may arrive 0.5s before the end,
+- **Audio**: a stream count, not speech or music.
+- **Motion quality**: blur, judder, stabilisation.
+- **Whether the payoff lands**: a clean frame may arrive 0.5s before the end,
   too late to register.
-- **Off-frame text** — a UI element out of frame in the still may pan in later.
+- **Off-frame text**: a UI element out of frame in the still may pan in later.
   Sample densely if the camera moves.
 
-## Step 3 — Segment plan
+## Step 3: Segment plan
 
 ```bash
 vidscope brief clip.mp4 --target 21 34
@@ -163,7 +163,7 @@ they land where pixels changed, not where the story beat is. Sanity-check
 against the sheet: if beat 2 is "product introduced", does the frame at its
 midpoint actually show the product?
 
-## Verification gate — before claiming a video is clean
+## Verification gate, before claiming a video is clean
 
 1. `probe` → no BLACK over 0.5s, no FREEZE over 1.5s, no DARK flag
 2. Rung 1 sheet read → story identified, product named
@@ -173,7 +173,7 @@ midpoint actually show the product?
 6. Audio: silent is fine only if music will be added
 
 Claim what you verified and only what you verified. "No text found in 16
-sampled frames" ≠ "no text anywhere" — say which one you did.
+sampled frames" ≠ "no text anywhere". Say which one you did.
 
 ## Pitfalls
 
@@ -183,17 +183,17 @@ sampled frames" ≠ "no text anywhere" — say which one you did.
   yields a false "0 cuts detected". Do not chain it.
 - **scdet `t=` is a threshold on the 0–100 scale**, not a duration. `t=1` logs
   every frame.
-- **`lavfi.scd.time` gives the exact timestamp** — use it instead of
+- **`lavfi.scd.time` gives the exact timestamp**, so use it instead of
   interpolating `frame_index × duration / frames`, which drifts.
 - **Rotation lives in side data, not tags.** ffmpeg 8 no longer populates
   `tags.rotate`; the display matrix shows up as
   `side_data_list[].rotation`. A 720×1280 stream tagged 90° is *displayed*
-  1280×720 — check side data first, fall back to the tag, and compute
-  orientation/resolution from the **display** dimensions or a landscape video
-  in a portrait container is silently treated as 9:16.
+  1280×720, so check side data first, fall back to the tag, and compute
+  orientation/resolution from the **display** dimensions. Otherwise a landscape
+  video in a portrait container is silently treated as 9:16.
 - **`freezedetect` only emits `freeze_end` when the freeze ends.** A clip
   frozen *at EOF* logs `freeze_start` alone. Parsing starts/ends as parallel
-  arrays drops it entirely, so a 3-second still frame passes as clean — the
+  arrays drops it entirely, so a 3-second still frame passes as clean. That is the
   worst miss, since a video that stops moving before it stops playing reads as
   a hang. Track open intervals and close any still open using the clip duration.
 - **`signalstats` emits YMIN→YMAX per frame across separate lines.** Group per
@@ -209,7 +209,7 @@ sampled frames" ≠ "no text anywhere" — say which one you did.
   n entries, so a 130s clip is represented by its first 16s and 88% of the video
   is never seen. Use an even spread, e.g. `i*(dur-0.15)/(n-1)`.
 - **Pin the SHORTEST side when downscaling.** `scale={cell}:-2` pins width, so
-  1920x1080 becomes 1080x608 — at the very rung whose job is reading a label.
+  1920x1080 becomes 1080x608, at the very rung whose job is reading a label.
   Use `scale=-2:{cell}` so height is pinned and landscape keeps its detail.
 - **Check every scale stage.** A tile/overlay pass that re-scales silently masks
   a wrong scale in the extract stage: the final sheet looks fine while the
@@ -223,7 +223,7 @@ sampled frames" ≠ "no text anywhere" — say which one you did.
 - **Don't duplicate filler cells.** Padding a grid with a repeated last frame
   reads as a frozen section.
 - **Rotation is fixed by ffmpeg's auto-rotate, not by code.** `vd_sheet.py` has
-  no rotation logic — the extract step relies on ffmpeg honouring the display
+  no rotation logic. The extract step relies on ffmpeg honouring the display
   matrix. Anything that adds `-noautorotate` renders sideways cells with no
   error, and only a geometry assertion catches it: a portrait clip tagged 90°
   must produce a sheet **wider than tall**.
@@ -236,7 +236,8 @@ sampled frames" ≠ "no text anywhere" — say which one you did.
   decode; print `1280x720 (stored 720x1280, rotated 90°) (landscape)`.
 
 ### Environment
-- **`/tmp` may be read-only** on some systems — pass `--out` to a writable dir.
+- **A read-only temp dir will break the sheet step.** Pass `--out` to a writable
+  directory if the default fails.
 - **No headless browser needed.** This ffmpeg + vision route is the only visual
   verification required.
 
