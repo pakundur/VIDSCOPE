@@ -31,14 +31,12 @@ This is a meaningful result because 12 of the 20 clips are single
 continuous shots with no black or freeze, so the detector had many
 opportunities to false-positive and produced none.
 
-## Result 2: scdet sampled only frames ABOVE the score floor
+## Result 2: the scdet sampling bug, and two wrong explanations of it
 
-`scene_scores()` in `scripts/vd_probe.py` ran `scdet=s=1:t=1`. The `=1`
-is the scene SCORE threshold, not an enable flag, so ffmpeg logged only
-frames scoring above 1/100. On this corpus that discarded most of the
-video:
+`scene_scores()` originally ran `scdet=s=1:t=1`, which logged only a
+handful of frames per clip. On this corpus:
 
-| clip | frames | scdet samples | coverage |
+| clip | frames | frames logged | coverage |
 |---|---|---|---|
 | HOME-A2-450 | 301 | 2 | 0.7% |
 | HOME-B1-174 | 297 | 11 | 3.7% |
@@ -46,10 +44,17 @@ video:
 | HOME-A1-195 | 372 | 18 | 4.8% |
 | HOME-A1-007 | 384 | 63 | 16.4% |
 
-This did not corrupt the cut list, because a dropped frame scored below
-1.0 and could never reach the 12.0 cut threshold anyway. But
-`frames_scored` and `mean_score` are derived from that list, so both
-were reporting the surviving tail rather than the clip.
+That is a real defect, but I explained it wrongly twice before getting
+it right, and both wrong explanations went into the skill docs and were
+committed. The correct behaviour, confirmed with `ffmpeg -h filter=scdet`:
+
+- `threshold` (alias `t`) is the score cutoff, default 10, range 0-100.
+  Frames scoring below it are never logged. `s=1:t=1` was therefore just
+  `threshold=1`, which logs almost everything but not all of it.
+- `s` is `sc_pass`, a boolean passthrough flag. It does not affect
+  scores at all. The earlier claim that `s` was a score floor was wrong.
+- `scdet=t=0` logs every frame. Measured on a 349-frame clip: 2 frames
+  at default, 45 at `t=1`, 349 at `t=0`.
 
 Measured on HOME-A2-450, which has 301 frames:
 
@@ -58,8 +63,8 @@ Measured on HOME-A2-450, which has 301 frames:
 | frames_scored | 2 | 301 |
 | mean_score | 5.348 | 0.211 |
 
-`mean_score` was overstated by 25x. `max_score` and `cuts_detected`
-were correct, because neither depends on how many frames survived.
+`mean_score` was overstated 25x. `max_score` and `cuts_detected` were
+correct, because neither depends on how many frames survived.
 
 An agent reading that JSON would conclude the clip is far more dynamic
 than it is, and a caller comparing two clips on `mean_score` would be

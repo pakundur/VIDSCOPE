@@ -178,20 +178,34 @@ sampled frames" ≠ "no text anywhere". Say which one you did.
 ## Pitfalls
 
 ### ffmpeg / scdet
-- **`scdet` takes two thresholds and both drop frames.** `s=` is the scene
-  score floor (0–100); `t=` is the scene time window in seconds over which the
-  score is accumulated. `scdet=s=1:t=1` logs only frames scoring above 1/100.
-  On a 301-frame clip measured here, 2 frames survived, so any statistic
-  derived from the log described the surviving tail rather than the clip. Use
-  `scdet=s=0:t=0` to log every frame at per-frame resolution.
+- **The filter takes `threshold` (alias `t`), default 10, range 0-100. `s` is
+  NOT a threshold.** `s` is `sc_pass`, a boolean that passes scene-change
+  frames downstream; it has no effect on the scores. Confirmed with
+  `ffmpeg -h filter=scdet`. Two earlier notes in this file were wrong about
+  this and have been replaced.
+- **Frames scoring below the threshold are not logged at all.** With the
+  default `threshold=10`, a quiet clip logs almost nothing: measured on a
+  349-frame spliced clip, 2 frames survived. `scdet=t=0` logs all 349. If
+  `frames_scored` is derived from the log, it measures how many frames
+  EXCEEDED the threshold, not how many were examined. Derived a mean over
+  that tail and you overstate it wildly: one 301-frame clip reported
+  `mean_score` 5.348 against a true per-frame mean of 0.211.
 - **`metadata=mode=print` after scdet does not silence it.** It emits
-  `lavfi.scd.score` a second time as `key=value`, so a parser matching both
-  `score:` and `score=` counts every frame twice. Match one form only.
+  `lavfi.scd.score` a second time in `key=value` form, so a parser matching
+  both `score:` and `score=` counts every frame twice. Match one form only.
 - **Parse metadata as blocks, not lines.** Each frame is a `pts_time:` header
   followed by `mafd=`, `score=`, `time=` on separate lines, with scdet's own
   line for the next frame interleaved between blocks. A line-at-a-time parse
   returns a score with no timestamp, and a cut loop that requires a timestamp
   then drops every cut while still reporting a correct frame count.
+- **A cut immediately followed by a duplicated frame can score 0.** scdet
+  derives its score from the difference between consecutive frames, so when
+  frame N equals frame N+1 the pair at the boundary compares equal and
+  reports 0.000 for a cut the eye sees plainly. Measured on a constructed
+  splice: the real cut was between frames 119 and 120 (67.4 grey levels of
+  difference) and the reported score at that boundary was 0.000 because
+  frame 120 equalled frame 121. Real footage does not normally duplicate
+  frames, but concatenated or re-timed material can.
 - **`lavfi.scd.time` gives the exact timestamp**, so use it instead of
   interpolating `frame_index × duration / frames`, which drifts.
 - **Rotation lives in side data, not tags.** ffmpeg 8 no longer populates
